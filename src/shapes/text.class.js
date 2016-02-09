@@ -310,6 +310,30 @@
     _fontSizeMult:             1.13,
 
     /**
+     * Is curved Text
+     * @type: boolean
+     * @default: false
+     */
+    curvedText: false,
+    /**
+     *  Reverse the curved Text
+     */
+    reverse: false,
+    /**
+     *  Curved text Spacing
+     */
+    spacing: 0,
+    /**
+     *  curvedText Radius
+     */
+    radius: 60,
+
+    /**
+     * Current arcWidth in degrees
+     */
+    arcWidth: 0,
+
+    /**
      * Constructor
      * @param {String} text Text string
      * @param {Object} [options] Options object
@@ -344,6 +368,11 @@
       this.width = this._getTextWidth(ctx);
       this._cacheLinesWidth = true;
       this.height = this._getTextHeight(ctx);
+      if (this.curvedText) {
+        //@todo: Enable get width of longest line
+        this._measureCurvedText(ctx, this._textLines[0])
+        this.width = this.height = parseInt((this.radius + this.fontSize) * 2);
+      }
     },
 
     /**
@@ -457,6 +486,77 @@
       this[shortM].toLive && ctx.restore();
     },
 
+    _measureCurvedText: function (ctx, chars) {
+      var curAngle = 0, angleRadians = 0, align = 0, charOffset = 0, toDraw = [], angleOffset = 0;
+      for (var i = 0; i < chars.length; i++) {
+        var kerning = fabric.util.radiansToDegrees(ctx.measureText(chars.substr(i, 1)).width / this.radius);
+        if (chars.substr(i, 1) == " ") {
+          charOffset = 1
+        }
+        curAngle -= parseInt(kerning + this.spacing + charOffset);
+        charOffset = 0;
+      }
+      this.arcWidth = Math.abs(curAngle);
+    },
+    _renderCurvedText: function (method, ctx, chars, left, top, lineIndex) {
+      var curAngle = 180, angleRadians = 0, align = 0, charOffset = 0, toDraw = [], angleOffset = 0, workingRadius = 0, lineOffset = 0;
+      lineOffset = lineIndex * this.fontSize;
+      ctx.textAlign = "left";
+
+      workingRadius += lineOffset;
+      if (!this.reverse) {
+        workingRadius = this.radius - lineOffset;
+      }
+      else {
+        workingRadius = this.radius + this.fontSize - (this.fontSize * this._fontSizeFraction) - lineOffset;
+      }
+      for (var i = 0; i < chars.length; i++) {
+        ctx.save()
+
+        var kerning = fabric.util.radiansToDegrees(ctx.measureText(chars.substr(i, 1)).width / workingRadius);
+        var textHeight = this.fontSize;
+        toDraw.push({
+          text: chars.substr(i, 1),
+          nextAngle: curAngle,
+          kerning:kerning
+        });
+
+        if (chars.substr(i, 1) == " ") {
+          charOffset = 1;
+        }
+        curAngle -= parseInt(kerning + this.spacing + charOffset);
+        charOffset = 0;
+      }
+
+      if (this.textAlign === 'center') {
+        angleOffset = curAngle / 2;
+      }
+      else if (this.textAlign === 'right') {
+        angleOffset = curAngle;
+      }
+
+      for (var i = 0; i < toDraw.length; i++) {
+        if (!this.reverse) {
+          angleRadians = fabric.util.degreesToRadians(toDraw[i].nextAngle - angleOffset);
+          left = (Math.cos(angleRadians) * workingRadius);
+          top = (-Math.sin(angleRadians) * workingRadius);
+          ctx.translate(left, top);
+          ctx.rotate(-fabric.util.degreesToRadians(toDraw[i].nextAngle - 90 - angleOffset-(toDraw[i].kerning/2)));
+        }
+        else {
+          angleRadians = fabric.util.degreesToRadians((-toDraw[i].nextAngle) + angleOffset + 180);
+          left = (-Math.cos(angleRadians) * workingRadius);
+          top = (Math.sin(angleRadians) * workingRadius);
+          ctx.translate(left, top)
+          ctx.rotate(-fabric.util.degreesToRadians((-toDraw[i].nextAngle)  + angleOffset + 90+(toDraw[i].kerning/2)))
+        }
+
+        this._renderChars(method, ctx, toDraw[i].text, 0, 0);
+        //ctx.fillRect(0,0,1,1);
+        ctx.restore();
+      }
+    },
+
     /**
      * @private
      * @param {String} method Method name ("fillText" or "strokeText")
@@ -469,6 +569,11 @@
     _renderTextLine: function(method, ctx, line, left, top, lineIndex) {
       // lift the line by quarter of fontSize
       top -= this.fontSize * this._fontSizeFraction;
+      //XNX
+      if (this.curvedText) {
+        this._renderCurvedText(method, ctx, line, left, top, lineIndex);
+        return;
+      }
 
       // short-circuit
       var lineWidth = this._getLineWidth(ctx, lineIndex);
@@ -839,7 +944,11 @@
         lineHeight:           this.lineHeight,
         textDecoration:       this.textDecoration,
         textAlign:            this.textAlign,
-        textBackgroundColor:  this.textBackgroundColor
+        textBackgroundColor:  this.textBackgroundColor,
+        curvedText:           this.curvedText,
+        spacing:              this.spacing,
+        radius:               this.radius,
+        reverse:              this.reverse,
       });
       if (!this.includeDefaultValues) {
         this._removeDefaultValues(object);
@@ -857,7 +966,12 @@
       var markup = this._createBaseSVGMarkup(),
           offsets = this._getSVGLeftTopOffsets(this.ctx),
           textAndBg = this._getSVGTextAndBg(offsets.textTop, offsets.textLeft);
-      this._wrapSVGTextAndBg(markup, textAndBg);
+          if(!this.curvedText) {
+            this._wrapSVGTextAndBg(markup, textAndBg);
+          }
+          else {
+            this._getSVGCurvedTextAndBg(markup,this.ctx);
+          }
 
       return reviver ? reviver(markup.join('')) : markup.join('');
     },
@@ -897,6 +1011,110 @@
       );
     },
 
+    _getSVGCurvedTextAndBg: function (markup) {
+      var textSpans = [ ],
+        textBgRects = [ ],
+        ctx = fabric.util.createCanvasElement().getContext('2d'),
+
+        height = 0,
+        curAngle = 180, angleRadians = 0, align = 0, charOffset = 0, toDraw = [], angleOffset = 0, workingRadius = 0, lineOffset = 0, left = 0, top = 0, rotation = 0;
+
+      this.render(ctx);
+      this._setTextStyles(ctx);
+
+      for (var i = 0, len = this._textLines.length; i < len; i++) {
+        toDraw=[];
+        curAngle=180;
+        lineOffset = i * this.fontSize;
+        workingRadius += lineOffset;
+        if (!this.reverse) {
+          workingRadius = this.radius - lineOffset;
+        } else {
+          workingRadius = this.radius + this.fontSize - (this.fontSize * this._fontSizeFraction) - lineOffset;
+        }
+
+        for (var n = 0; n < this._textLines[i].length; n++) {
+          ctx.save();
+          var letterWidth=ctx.measureText(this._textLines[i].substr(n, 1)).width;
+          var kerning = fabric.util.radiansToDegrees(letterWidth/ workingRadius);
+          var textHeight = this.fontSize;
+          toDraw.push({
+            text: this._textLines[i].substr(n, 1),
+            nextAngle: curAngle,
+            letterWidth:letterWidth,
+            kerning:kerning
+          });
+          if (this._textLines[i].substr(n, 1) == " ") {
+              charOffset = 1
+          }
+          curAngle -= parseInt(kerning + this.spacing + charOffset);
+
+          charOffset = 0;
+        }
+        if (this.textAlign === 'center') {
+          angleOffset = curAngle / 2;
+        } else if (this.textAlign === 'right') {
+          angleOffset = curAngle;
+        }
+        for (var j = 0; j < toDraw.length; j++) {
+          if (!this.reverse) {
+            angleRadians = fabric.util.degreesToRadians(toDraw[j].nextAngle - angleOffset);
+            left = (Math.cos(angleRadians) * workingRadius);
+            top = (-Math.sin(angleRadians) * workingRadius);
+
+            rotation=(-toDraw[j].nextAngle)  + angleOffset + 90+(toDraw[i].kerning/2);
+          }
+          else {
+            angleRadians = fabric.util.degreesToRadians((-toDraw[j].nextAngle) + angleOffset + 180);
+            left = (-Math.cos(angleRadians) * workingRadius);
+            top = (Math.sin(angleRadians) * workingRadius);
+            rotation=toDraw[j].nextAngle - 90 - angleOffset-(toDraw[i].kerning/2);
+          }
+          var newRotation=(-toDraw[j].nextAngle) - 83 + angleOffset + 180
+
+          //textSpans.push('<rect x="'+toFixed(left,8)+'" y="'+toFixed(top,8)+'" width="1" height="1" style="stroke: #3333cc; fill:none;" />')
+          textSpans.push(
+            '\t\t<text ',
+            'transform="rotate(',
+            toFixed(rotation,8)+" "+toFixed(left,8)+" "+toFixed(top,8),
+
+            ') ',
+            'translate(',
+            toFixed(left,8),
+            ' ',
+            toFixed(top,8),
+            ')" ',
+            (this.fontFamily ? 'font-family="' + this.fontFamily.replace(/"/g, '\'') + '" ' : ''),
+            (this.fontSize ? 'font-size="' + this.fontSize + '" ' : ''),
+            (this.fontStyle ? 'font-style="' + this.fontStyle + '" ' : ''),
+            (this.fontWeight ? 'font-weight="' + this.fontWeight + '" ' : ''),
+            (this.textDecoration ? 'text-decoration="' + this.textDecoration + '" ' : ''),
+            'style="', this.getSvgStyles(), '" >',
+            '<tspan x="',
+            toFixed(0, 4), '" ',
+            'y="',
+            toFixed(0, 4),
+            '" ',
+            // doing this on <tspan> elements since setting opacity
+            // on containing <text> one doesn't work in Illustrator
+            this._getFillAttributes(this.fill), '>',
+            fabric.util.string.escapeXml(this._textLines[i].substr(j, 1)),
+            '</tspan>',
+            '</text>\n'
+          );
+        }
+      }
+
+
+
+
+      markup.push(
+        '\t<g transform="', this.getSvgTransform(), this.getSvgTransformMatrix(), '">\n',
+          // textAndBg.textBgRects.join(''),
+        textSpans.join(''),
+        '\t</g>\n'
+      );
+    },
     /**
      * @private
      * @param {Number} textTopOffset Text top offset

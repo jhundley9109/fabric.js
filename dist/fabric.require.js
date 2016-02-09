@@ -164,7 +164,7 @@ fabric.Collection = {
 };
 
 (function(global) {
-    var sqrt = Math.sqrt, atan2 = Math.atan2, atan = Math.atan, pow = Math.pow, abs = Math.abs, PiBy180 = Math.PI / 180;
+    var sqrt = Math.sqrt, atan2 = Math.atan2, pow = Math.pow, abs = Math.abs, PiBy180 = Math.PI / 180;
     fabric.util = {
         removeFromArray: function(array, value) {
             var idx = array.indexOf(value);
@@ -1687,7 +1687,7 @@ if (typeof console !== "undefined") {
                 matrix[5] = args[1];
             }
         }
-        var iMatrix = [ 1, 0, 0, 1, 0, 0 ], number = fabric.reNum, commaWsp = "(?:\\s+,?\\s*|,\\s*)", skewX = "(?:(skewX)\\s*\\(\\s*(" + number + ")\\s*\\))", skewY = "(?:(skewY)\\s*\\(\\s*(" + number + ")\\s*\\))", rotate = "(?:(rotate)\\s*\\(\\s*(" + number + ")(?:" + commaWsp + "(" + number + ")" + commaWsp + "(" + number + "))?\\s*\\))", scale = "(?:(scale)\\s*\\(\\s*(" + number + ")(?:" + commaWsp + "(" + number + "))?\\s*\\))", translate = "(?:(translate)\\s*\\(\\s*(" + number + ")(?:" + commaWsp + "(" + number + "))?\\s*\\))", matrix = "(?:(matrix)\\s*\\(\\s*" + "(" + number + ")" + commaWsp + "(" + number + ")" + commaWsp + "(" + number + ")" + commaWsp + "(" + number + ")" + commaWsp + "(" + number + ")" + commaWsp + "(" + number + ")" + "\\s*\\))", transform = "(?:" + matrix + "|" + translate + "|" + scale + "|" + rotate + "|" + skewX + "|" + skewY + ")", transforms = "(?:" + transform + "(?:" + commaWsp + transform + ")*" + ")", transformList = "^\\s*(?:" + transforms + "?)\\s*$", reTransformList = new RegExp(transformList), reTransform = new RegExp(transform, "g");
+        var iMatrix = [ 1, 0, 0, 1, 0, 0 ], number = fabric.reNum, commaWsp = "(?:\\s+,?\\s*|,\\s*)", skewX = "(?:(skewX)\\s*\\(\\s*(" + number + ")\\s*\\))", skewY = "(?:(skewY)\\s*\\(\\s*(" + number + ")\\s*\\))", rotate = "(?:(rotate)\\s*\\(\\s*(" + number + ")(?:" + commaWsp + "(" + number + ")" + commaWsp + "(" + number + "))?\\s*\\))", scale = "(?:(scale)\\s*\\(\\s*(" + number + ")(?:" + commaWsp + "(" + number + "))?\\s*\\))", translate = "(?:(translate)\\s*\\(\\s*(" + number + ")(?:" + commaWsp + "(" + number + "))?\\s*\\))", matrix = "(?:(matrix)\\s*\\(\\s*" + "(" + number + ")" + commaWsp + "(" + number + ")" + commaWsp + "(" + number + ")" + commaWsp + "(" + number + ")" + commaWsp + "(" + number + ")" + commaWsp + "(" + number + ")" + "\\s*\\))", transform = "(?:" + matrix + "|" + translate + "|" + scale + "|" + rotate + "|" + skewX + "|" + skewY + ")", transforms = "(?:" + transform + "(?:" + commaWsp + "*" + transform + ")*" + ")", transformList = "^\\s*(?:" + transforms + "?)\\s*$", reTransformList = new RegExp(transformList), reTransform = new RegExp(transform, "g");
         return function(attributeValue) {
             var matrix = iMatrix.concat(), matrices = [];
             if (!attributeValue || attributeValue && !reTransformList.test(attributeValue)) {
@@ -2080,7 +2080,7 @@ if (typeof console !== "undefined") {
         getCSSRules: function(doc) {
             var styles = doc.getElementsByTagName("style"), allRules = {}, rules;
             for (var i = 0, len = styles.length; i < len; i++) {
-                var styleContents = styles[i].textContent;
+                var styleContents = styles[i].textContent || styles[i].text;
                 styleContents = styleContents.replace(/\/\*[\s\S]*?\*\//g, "");
                 if (styleContents.trim() === "") {
                     continue;
@@ -3044,7 +3044,6 @@ fabric.Pattern = fabric.util.createClass({
         initialize: function(el, options) {
             options || (options = {});
             this._initStatic(el, options);
-            fabric.StaticCanvas.activeInstance = this;
         },
         backgroundColor: "",
         backgroundImage: null,
@@ -3122,12 +3121,12 @@ fabric.Pattern = fabric.util.createClass({
             if (typeof image === "string") {
                 fabric.util.loadImage(image, function(img) {
                     this[property] = new fabric.Image(img, options);
-                    callback && callback();
+                    callback && callback(img);
                 }, this, options && options.crossOrigin);
             } else {
                 options && image.setOptions(options);
                 this[property] = image;
-                callback && callback();
+                callback && callback(image);
             }
             return this;
         },
@@ -3392,7 +3391,6 @@ fabric.Pattern = fabric.util.createClass({
                 this.drawControls(canvasToDrawOn);
             }
             this.fire("after:render");
-            canvasToDrawOn.restore();
             return this;
         },
         _renderObjects: function(ctx, objects) {
@@ -4046,7 +4044,6 @@ fabric.PatternBrush = fabric.util.createClass(fabric.PencilBrush, {
             this._initStatic(el, options);
             this._initInteractive();
             this._createCacheCanvas();
-            fabric.Canvas.activeInstance = this;
         },
         uniScaleTransform: false,
         centeredScaling: false,
@@ -4118,17 +4115,18 @@ fabric.PatternBrush = fabric.util.createClass(fabric.PencilBrush, {
             return target.containsPoint(xy) || target._findTargetCorner(pointer);
         },
         _normalizePointer: function(object, pointer) {
-            var activeGroup = this.getActiveGroup(), x = pointer.x, y = pointer.y, isObjectInGroup = activeGroup && object.type !== "group" && activeGroup.contains(object), lt;
+            var activeGroup = this.getActiveGroup(), isObjectInGroup = activeGroup && object.type !== "group" && activeGroup.contains(object), lt, m;
             if (isObjectInGroup) {
-                lt = fabric.util.transformPoint(activeGroup.getCenterPoint(), this.viewportTransform, true);
-                x -= lt.x;
-                y -= lt.y;
-                x /= activeGroup.scaleX;
-                y /= activeGroup.scaleY;
+                m = fabric.util.multiplyTransformMatrices(this.viewportTransform, activeGroup.calcTransformMatrix());
+                m = fabric.util.invertTransform(m);
+                pointer = fabric.util.transformPoint(pointer, m, false);
+                lt = fabric.util.transformPoint(activeGroup.getCenterPoint(), m, false);
+                pointer.x -= lt.x;
+                pointer.y -= lt.y;
             }
             return {
-                x: x,
-                y: y
+                x: pointer.x,
+                y: pointer.y
             };
         },
         isTargetTransparent: function(target, x, y) {
@@ -5287,7 +5285,7 @@ fabric.util.object.extend(fabric.StaticCanvas.prototype, {
     },
     __toDataURL: function(format, quality, cropping) {
         this.renderAll();
-        var canvasEl = this.lowerCanvasEl, croppedCanvasEl = this.__getCroppedCanvas(canvasEl, cropping);
+        var canvasEl = this.contextContainer.canvas, croppedCanvasEl = this.__getCroppedCanvas(canvasEl, cropping);
         if (format === "jpg") {
             format = "jpeg";
         }
@@ -7219,6 +7217,10 @@ fabric.util.object.extend(fabric.Object.prototype, {
             if (!("left" in options)) {
                 this.left = this.minX;
             }
+            this.pathOffset = {
+                x: this.minX + this.width / 2,
+                y: this.minY + this.height / 2
+            };
         },
         _calcDimensions: function() {
             var points = this.points, minX = min(points, "x"), minY = min(points, "y"), maxX = max(points, "x"), maxY = max(points, "y");
@@ -7226,27 +7228,24 @@ fabric.util.object.extend(fabric.Object.prototype, {
             this.height = maxY - minY || 0;
             this.minX = minX || 0, this.minY = minY || 0;
         },
-        _applyPointOffset: function() {
-            this.points.forEach(function(p) {
-                p.x -= this.minX + this.width / 2;
-                p.y -= this.minY + this.height / 2;
-            }, this);
-        },
         toObject: function(propertiesToInclude) {
             return extend(this.callSuper("toObject", propertiesToInclude), {
                 points: this.points.concat()
             });
         },
         toSVG: function(reviver) {
-            var points = [], markup = this._createBaseSVGMarkup();
+            var points = [], addTransform, markup = this._createBaseSVGMarkup();
             for (var i = 0, len = this.points.length; i < len; i++) {
                 points.push(toFixed(this.points[i].x, 2), ",", toFixed(this.points[i].y, 2), " ");
             }
-            markup.push("<", this.type, " ", 'points="', points.join(""), '" style="', this.getSvgStyles(), '" transform="', this.getSvgTransform(), " ", this.getSvgTransformMatrix(), '"/>\n');
+            if (!(this.group && this.group.type === "path-group")) {
+                addTransform = " translate(" + -this.pathOffset.x + ", " + -this.pathOffset.y + ") ";
+            }
+            markup.push("<", this.type, " ", 'points="', points.join(""), '" style="', this.getSvgStyles(), '" transform="', this.getSvgTransform(), addTransform, " ", this.getSvgTransformMatrix(), '"/>\n');
             return reviver ? reviver(markup.join("")) : markup.join("");
         },
-        _render: function(ctx) {
-            if (!this.commonRender(ctx)) {
+        _render: function(ctx, noTransform) {
+            if (!this.commonRender(ctx, noTransform)) {
                 return;
             }
             this._renderFill(ctx);
@@ -7255,18 +7254,13 @@ fabric.util.object.extend(fabric.Object.prototype, {
                 this._renderStroke(ctx);
             }
         },
-        commonRender: function(ctx) {
+        commonRender: function(ctx, noTransform) {
             var point, len = this.points.length;
             if (!len || isNaN(this.points[len - 1].y)) {
                 return false;
             }
+            noTransform || ctx.translate(-this.pathOffset.x, -this.pathOffset.y);
             ctx.beginPath();
-            if (this._applyPointOffset) {
-                if (!(this.group && this.group.type === "path-group")) {
-                    this._applyPointOffset();
-                }
-                this._applyPointOffset = null;
-            }
             ctx.moveTo(this.points[0].x, this.points[0].y);
             for (var i = 0; i < len; i++) {
                 point = this.points[i];
@@ -8889,7 +8883,7 @@ fabric.Image.filters.BaseFilter = fabric.util.createClass({
                 g = data[i + 1];
                 b = data[i + 2];
                 if (r > limit && g > limit && b > limit && abs(r - g) < distance && abs(r - b) < distance && abs(g - b) < distance) {
-                    data[i + 3] = 1;
+                    data[i + 3] = 0;
                 }
             }
             context.putImageData(imageData, 0, 0);
@@ -9362,6 +9356,11 @@ fabric.Image.filters.BaseFilter = fabric.util.createClass({
         shadow: null,
         _fontSizeFraction: .25,
         _fontSizeMult: 1.13,
+        curvedText: false,
+        reverse: false,
+        spacing: 0,
+        radius: 60,
+        arcWidth: 0,
         initialize: function(text, options) {
             options = options || {};
             this.text = text;
@@ -9384,6 +9383,10 @@ fabric.Image.filters.BaseFilter = fabric.util.createClass({
             this.width = this._getTextWidth(ctx);
             this._cacheLinesWidth = true;
             this.height = this._getTextHeight(ctx);
+            if (this.curvedText) {
+                this._measureCurvedText(ctx, this._textLines[0]);
+                this.width = this.height = parseInt((this.radius + this.fontSize) * 2);
+            }
         },
         toString: function() {
             return "#<fabric.Text (" + this.complexity() + '): { "text": "' + this.text + '", "fontFamily": "' + this.fontFamily + '" }>';
@@ -9444,8 +9447,72 @@ fabric.Image.filters.BaseFilter = fabric.util.createClass({
             ctx[method](chars, left, top);
             this[shortM].toLive && ctx.restore();
         },
+        _measureCurvedText: function(ctx, chars) {
+            var curAngle = 0, angleRadians = 0, align = 0, charOffset = 0, toDraw = [], angleOffset = 0;
+            for (var i = 0; i < chars.length; i++) {
+                var kerning = fabric.util.radiansToDegrees(ctx.measureText(chars.substr(i, 1)).width / this.radius);
+                if (chars.substr(i, 1) == " ") {
+                    charOffset = 1;
+                }
+                curAngle -= parseInt(kerning + this.spacing + charOffset);
+                charOffset = 0;
+            }
+            this.arcWidth = Math.abs(curAngle);
+        },
+        _renderCurvedText: function(method, ctx, chars, left, top, lineIndex) {
+            var curAngle = 180, angleRadians = 0, align = 0, charOffset = 0, toDraw = [], angleOffset = 0, workingRadius = 0, lineOffset = 0;
+            lineOffset = lineIndex * this.fontSize;
+            ctx.textAlign = "left";
+            workingRadius += lineOffset;
+            if (!this.reverse) {
+                workingRadius = this.radius - lineOffset;
+            } else {
+                workingRadius = this.radius + this.fontSize - this.fontSize * this._fontSizeFraction - lineOffset;
+            }
+            for (var i = 0; i < chars.length; i++) {
+                ctx.save();
+                var kerning = fabric.util.radiansToDegrees(ctx.measureText(chars.substr(i, 1)).width / workingRadius);
+                var textHeight = this.fontSize;
+                toDraw.push({
+                    text: chars.substr(i, 1),
+                    nextAngle: curAngle,
+                    kerning: kerning
+                });
+                if (chars.substr(i, 1) == " ") {
+                    charOffset = 1;
+                }
+                curAngle -= parseInt(kerning + this.spacing + charOffset);
+                charOffset = 0;
+            }
+            if (this.textAlign === "center") {
+                angleOffset = curAngle / 2;
+            } else if (this.textAlign === "right") {
+                angleOffset = curAngle;
+            }
+            for (var i = 0; i < toDraw.length; i++) {
+                if (!this.reverse) {
+                    angleRadians = fabric.util.degreesToRadians(toDraw[i].nextAngle - angleOffset);
+                    left = Math.cos(angleRadians) * workingRadius;
+                    top = -Math.sin(angleRadians) * workingRadius;
+                    ctx.translate(left, top);
+                    ctx.rotate(-fabric.util.degreesToRadians(toDraw[i].nextAngle - 90 - angleOffset - toDraw[i].kerning / 2));
+                } else {
+                    angleRadians = fabric.util.degreesToRadians(-toDraw[i].nextAngle + angleOffset + 180);
+                    left = -Math.cos(angleRadians) * workingRadius;
+                    top = Math.sin(angleRadians) * workingRadius;
+                    ctx.translate(left, top);
+                    ctx.rotate(-fabric.util.degreesToRadians(-toDraw[i].nextAngle + angleOffset + 90 + toDraw[i].kerning / 2));
+                }
+                this._renderChars(method, ctx, toDraw[i].text, 0, 0);
+                ctx.restore();
+            }
+        },
         _renderTextLine: function(method, ctx, line, left, top, lineIndex) {
             top -= this.fontSize * this._fontSizeFraction;
+            if (this.curvedText) {
+                this._renderCurvedText(method, ctx, line, left, top, lineIndex);
+                return;
+            }
             var lineWidth = this._getLineWidth(ctx, lineIndex);
             if (this.textAlign !== "justify" || this.width < lineWidth) {
                 this._renderChars(method, ctx, line, left, top, lineIndex);
@@ -9648,7 +9715,11 @@ fabric.Image.filters.BaseFilter = fabric.util.createClass({
                 lineHeight: this.lineHeight,
                 textDecoration: this.textDecoration,
                 textAlign: this.textAlign,
-                textBackgroundColor: this.textBackgroundColor
+                textBackgroundColor: this.textBackgroundColor,
+                curvedText: this.curvedText,
+                spacing: this.spacing,
+                radius: this.radius,
+                reverse: this.reverse
             });
             if (!this.includeDefaultValues) {
                 this._removeDefaultValues(object);
@@ -9657,7 +9728,11 @@ fabric.Image.filters.BaseFilter = fabric.util.createClass({
         },
         toSVG: function(reviver) {
             var markup = this._createBaseSVGMarkup(), offsets = this._getSVGLeftTopOffsets(this.ctx), textAndBg = this._getSVGTextAndBg(offsets.textTop, offsets.textLeft);
-            this._wrapSVGTextAndBg(markup, textAndBg);
+            if (!this.curvedText) {
+                this._wrapSVGTextAndBg(markup, textAndBg);
+            } else {
+                this._getSVGCurvedTextAndBg(markup, this.ctx);
+            }
             return reviver ? reviver(markup.join("")) : markup.join("");
         },
         _getSVGLeftTopOffsets: function(ctx) {
@@ -9670,6 +9745,60 @@ fabric.Image.filters.BaseFilter = fabric.util.createClass({
         },
         _wrapSVGTextAndBg: function(markup, textAndBg) {
             markup.push('	<g transform="', this.getSvgTransform(), this.getSvgTransformMatrix(), '">\n', textAndBg.textBgRects.join(""), "		<text ", this.fontFamily ? 'font-family="' + this.fontFamily.replace(/"/g, "'") + '" ' : "", this.fontSize ? 'font-size="' + this.fontSize + '" ' : "", this.fontStyle ? 'font-style="' + this.fontStyle + '" ' : "", this.fontWeight ? 'font-weight="' + this.fontWeight + '" ' : "", this.textDecoration ? 'text-decoration="' + this.textDecoration + '" ' : "", 'style="', this.getSvgStyles(), '" >\n', textAndBg.textSpans.join(""), "		</text>\n", "	</g>\n");
+        },
+        _getSVGCurvedTextAndBg: function(markup) {
+            var textSpans = [], textBgRects = [], ctx = fabric.util.createCanvasElement().getContext("2d"), height = 0, curAngle = 180, angleRadians = 0, align = 0, charOffset = 0, toDraw = [], angleOffset = 0, workingRadius = 0, lineOffset = 0, left = 0, top = 0, rotation = 0;
+            this.render(ctx);
+            this._setTextStyles(ctx);
+            for (var i = 0, len = this._textLines.length; i < len; i++) {
+                toDraw = [];
+                curAngle = 180;
+                lineOffset = i * this.fontSize;
+                workingRadius += lineOffset;
+                if (!this.reverse) {
+                    workingRadius = this.radius - lineOffset;
+                } else {
+                    workingRadius = this.radius + this.fontSize - this.fontSize * this._fontSizeFraction - lineOffset;
+                }
+                for (var n = 0; n < this._textLines[i].length; n++) {
+                    ctx.save();
+                    var letterWidth = ctx.measureText(this._textLines[i].substr(n, 1)).width;
+                    var kerning = fabric.util.radiansToDegrees(letterWidth / workingRadius);
+                    var textHeight = this.fontSize;
+                    toDraw.push({
+                        text: this._textLines[i].substr(n, 1),
+                        nextAngle: curAngle,
+                        letterWidth: letterWidth,
+                        kerning: kerning
+                    });
+                    if (this._textLines[i].substr(n, 1) == " ") {
+                        charOffset = 1;
+                    }
+                    curAngle -= parseInt(kerning + this.spacing + charOffset);
+                    charOffset = 0;
+                }
+                if (this.textAlign === "center") {
+                    angleOffset = curAngle / 2;
+                } else if (this.textAlign === "right") {
+                    angleOffset = curAngle;
+                }
+                for (var j = 0; j < toDraw.length; j++) {
+                    if (!this.reverse) {
+                        angleRadians = fabric.util.degreesToRadians(toDraw[j].nextAngle - angleOffset);
+                        left = Math.cos(angleRadians) * workingRadius;
+                        top = -Math.sin(angleRadians) * workingRadius;
+                        rotation = -toDraw[j].nextAngle + angleOffset + 90 + toDraw[i].kerning / 2;
+                    } else {
+                        angleRadians = fabric.util.degreesToRadians(-toDraw[j].nextAngle + angleOffset + 180);
+                        left = -Math.cos(angleRadians) * workingRadius;
+                        top = Math.sin(angleRadians) * workingRadius;
+                        rotation = toDraw[j].nextAngle - 90 - angleOffset - toDraw[i].kerning / 2;
+                    }
+                    var newRotation = -toDraw[j].nextAngle - 83 + angleOffset + 180;
+                    textSpans.push("		<text ", 'transform="rotate(', toFixed(rotation, 8) + " " + toFixed(left, 8) + " " + toFixed(top, 8), ") ", "translate(", toFixed(left, 8), " ", toFixed(top, 8), ')" ', this.fontFamily ? 'font-family="' + this.fontFamily.replace(/"/g, "'") + '" ' : "", this.fontSize ? 'font-size="' + this.fontSize + '" ' : "", this.fontStyle ? 'font-style="' + this.fontStyle + '" ' : "", this.fontWeight ? 'font-weight="' + this.fontWeight + '" ' : "", this.textDecoration ? 'text-decoration="' + this.textDecoration + '" ' : "", 'style="', this.getSvgStyles(), '" >', '<tspan x="', toFixed(0, 4), '" ', 'y="', toFixed(0, 4), '" ', this._getFillAttributes(this.fill), ">", fabric.util.string.escapeXml(this._textLines[i].substr(j, 1)), "</tspan>", "</text>\n");
+                }
+            }
+            markup.push('	<g transform="', this.getSvgTransform(), this.getSvgTransformMatrix(), '">\n', textSpans.join(""), "	</g>\n");
         },
         _getSVGTextAndBg: function(textTopOffset, textLeftOffset) {
             var textSpans = [], textBgRects = [], height = 0;
@@ -9697,9 +9826,9 @@ fabric.Image.filters.BaseFilter = fabric.util.createClass({
         _setSVGTextLineJustifed: function(i, textSpans, yPos, textLeftOffset) {
             var ctx = fabric.util.createCanvasElement().getContext("2d");
             this._setTextStyles(ctx);
-            var line = this._textLines[i], words = line.split(/\s+/), wordsWidth = this._getWidthOfWords(ctx, line), widthDiff = this.width - wordsWidth, numSpaces = words.length - 1, spaceWidth = numSpaces > 0 ? widthDiff / numSpaces : 0, word, attributes = this._getFillAttributes(this.fill);
+            var line = this._textLines[i], words = line.split(/\s+/), wordsWidth = this._getWidthOfWords(ctx, line), widthDiff = this.width - wordsWidth, numSpaces = words.length - 1, spaceWidth = numSpaces > 0 ? widthDiff / numSpaces : 0, word, attributes = this._getFillAttributes(this.fill), len;
             textLeftOffset += this._getLineLeftOffset(this._getLineWidth(ctx, i));
-            for (var i = 0, len = words.length; i < len; i++) {
+            for (i = 0, len = words.length; i < len; i++) {
                 word = words[i];
                 textSpans.push('			<tspan x="', toFixed(textLeftOffset, NUM_FRACTION_DIGITS), '" ', 'y="', toFixed(yPos, NUM_FRACTION_DIGITS), '" ', attributes, ">", fabric.util.string.escapeXml(word), "</tspan>\n");
                 textLeftOffset += this._getWidthOfWords(ctx, word) + spaceWidth;
@@ -10871,9 +11000,6 @@ fabric.util.object.extend(fabric.IText.prototype, {
             height += this._getHeightOfLine(this.ctx, i) * this.scaleY;
             var widthOfLine = this._getLineWidth(this.ctx, i), lineLeftOffset = this._getLineLeftOffset(widthOfLine);
             width = lineLeftOffset * this.scaleX;
-            if (this.flipX) {
-                this._textLines[i] = line.reverse().join("");
-            }
             for (var j = 0, jlen = line.length; j < jlen; j++) {
                 prevWidth = width;
                 width += this._getWidthOfChar(this.ctx, line[j], i, this.flipX ? jlen - j : j) * this.scaleX;
